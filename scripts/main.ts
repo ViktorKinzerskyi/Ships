@@ -15,11 +15,9 @@ const greenColor = 0x3dfc03;
 interface ICoords {
     x:number[],
     y:number[]
-
 }
 interface IPier {
     id:number,
-    coords:ICoords,
     isEmpty:boolean,
     isBusy:boolean,
     cargo:PIXI.Graphics,
@@ -30,16 +28,16 @@ interface IShip {
     isEmpty:boolean,
     cargo:PIXI.Graphics,
     ship:PIXI.Graphics,
-    sheepTween?: TWEEN.Tween<any>,
     queuePos?: number,
-    toDelte?:boolean,
+    toDelete?:boolean,
     toPier?:IPier,
 }
 
 let outQueue:IShip[] = [];
 let piers:IPier[] = [];
 let ships: IShip[] = [];
-let gateQueue: boolean[] = [
+//let gateQueue:boolean[] = new Array(5).fill(true);
+let gateQueue:boolean[] = [
     true,
     true,
     true,
@@ -50,6 +48,7 @@ let gateClosed: boolean = false;
 let moveFromPort:boolean = false;
 let moveToPort:boolean = false;
 const spawnInterval: number = 8000;
+let queueMove:boolean = false;
 
 Start();
 
@@ -68,10 +67,6 @@ function initPiers() {
             pier: drawObject(10, 10 + 105 * i, 40, 90, yellowColor, yellowColor, 10),
             isBusy: false,
             isEmpty: true,
-            coords: {
-                x: [165, 60],
-                y: [35 + 105 * i, 35 + 105 * i]
-            }
         }
         app.stage.addChild(piers[i].pier);
         app.stage.addChild(piers[i].cargo);
@@ -111,7 +106,8 @@ function initGate() {
                             shiftAllShips();
                         }
 
-                    } else {
+                    }
+                    else {
                         currentShip = null;
                     }
                 }
@@ -126,14 +122,28 @@ function shiftAllShips(){
             gateQueue[ship.queuePos] = true;
             gateQueue[ship.queuePos - 1] = false;
             ship.queuePos -= 1;
-            goToNextQueue(ship);
+            goToPos(ship, true);
         }
     });
 }
 
-function UnLoadShip(ship:IShip, pier:IPier):void{
+function CargoOnShip(ship:IShip, pier:IPier, move:string):void{
+    let width:number;
+
+        switch (move) {
+            case "LoadShip":
+                width = 90;
+                break;
+            case "UnLoadShip":
+                width = 0;
+                break;
+            default:
+                console.log("No move");
+                break;
+        }
+
     new TWEEN.Tween(ship.cargo)
-        .to({width:0})
+        .to({width:width})
         .duration(5000)
         .onComplete(()=>{
             if(!moveToPort){
@@ -146,39 +156,43 @@ function UnLoadShip(ship:IShip, pier:IPier):void{
         .start()
 }
 
-function LoadShip(ship:IShip, pier:IPier):void{
-    new TWEEN.Tween(ship.cargo)
-        .to({width:90})
-        .duration(5000)
-        .onComplete(()=>{
-            if(!moveToPort){
-                goOut(ship, pier);
-            }
-            else{
-                outQueue.push(ship);
-            }
-        })
-        .start()
-}
+function CargoOnPier(pier:IPier, move:string):void{
+    let width:number;
+    let nextStep:void;
+    let x:number;
 
-function LoadPier(pier:IPier):void{
-    new TWEEN.Tween(pier.cargo)
-        .to({width:0, x:10})
-        .duration(5000)
-        .onComplete(()=>{
-            pier.isEmpty = false;
-        })
-        .start()
-}
+    switch (move) {
+        case "LoadPier":
+            width = 0;
+            x = 10;
+            nextStep = AfterLoading();
+            break;
+        case "UnLoadPier":
+            width = 40;
+            x = 0;
+            nextStep = AfterUnLoading();
+            break;
+        default:
+            console.log("No move");
+            break;
+    }
 
-function UnLoadPier (pier:IPier):void{
     new TWEEN.Tween(pier.cargo)
-        .to({width:40, x:0})
+        .to({width:width, x:x})
         .duration(5000)
         .onComplete(()=>{
-            pier.isEmpty = true;
+            nextStep;
         })
         .start()
+
+    function AfterLoading():void {
+        pier.isEmpty = false;
+    }
+
+    function AfterUnLoading():void {
+        pier.isEmpty = true;
+    }
+
 }
 
 function goOut(ship:IShip, pier:IPier){
@@ -221,18 +235,18 @@ function goOut(ship:IShip, pier:IPier){
 }
 
 function goFarAway(ship:IShip){
-    let y = getRndOut()
+    let y = getRnd("OUT")
     new TWEEN.Tween(ship.ship)
         .to({x: 805, y: y})
         .duration(4000)
         .onComplete(()=>{
             ships.forEach((ship, index)=>{
-                if(ship.toDelte)
+                if(ship.toDelete)
                     ships.splice(index,1)
             });
         })
         .start();
-    ship.sheepTween = new TWEEN.Tween(ship.cargo)
+    new TWEEN.Tween(ship.cargo)
         .to({x: 805, y: y})
         .duration(4000)
         .start();
@@ -241,13 +255,12 @@ function goFarAway(ship:IShip){
 function goToPier(ship: IShip, pier: IPier) {
     moveToPort = true;
     gateQueue[ship.queuePos] = true;
-
-    ship.toDelte = true;
+    ship.toDelete = true;
     gateClosed = true;
     pier.isBusy = true;
     let coords:ICoords;
     let x = ship.ship.getBounds().x;
-    let duration = 1000;
+    let duration = 2000;
 
     if(ship.queuePos===0){
         coords = {
@@ -260,7 +273,7 @@ function goToPier(ship: IShip, pier: IPier) {
             x:[x, x-100],
             y:[192, 192]
         }
-        duration *= 2;
+        duration *=2;
     }
     else if(ship.queuePos===2){
         coords = {
@@ -285,42 +298,38 @@ function goToPier(ship: IShip, pier: IPier) {
     }
 
     if(pier.id===0){
-        coords.x.push(165, 165);
-        coords.y.push(192, 111);
+        coords.x.push(165, 165, 165, 60);
+        coords.y.push(192, 111, 35, 35);
         duration += 1000*4;
     }
     else if(pier.id===1){
-        coords.x.push(165);
-        coords.y.push(192);
+        coords.x.push(165, 165, 60);
+        coords.y.push(192, 140, 140);
         duration += 1000*2;
     }
     else if(pier.id===2){
-        coords.x.push(165);
-        coords.y.push(192);
+        coords.x.push(165, 165, 60);
+        coords.y.push(192, 245, 245);
         duration += 1000*2;
     }
     else if(pier.id===3){
-        coords.x.push(165, 165);
-        coords.y.push(192, 273);
+        coords.x.push(165, 165, 165, 60);
+        coords.y.push(192, 273, 350, 350);
         duration += 1000*4;
     }
 
-    pier.coords.x.forEach((x)=>{
-        coords.x.push(x);
-    })
-    pier.coords.y.forEach((y)=>{
-        coords.y.push(y);
-    })
     ship.queuePos = null;
     new TWEEN.Tween(ship.ship)
         .to({x: coords.x, y: coords.y})
         .duration(duration)
         .interpolation(TWEEN.Interpolation.Linear)
+        .easing(TWEEN.Easing.Quadratic.Out)
         .start();
     new TWEEN.Tween(ship.cargo)
         .to({x: coords.x, y: coords.y})
         .duration(duration)
         .interpolation(TWEEN.Interpolation.Linear)
+        .easing(TWEEN.Easing.Quadratic.Out)
         .onComplete(()=> {
                 gateClosed = false;
                 startPierLoading(pier, ship);
@@ -340,12 +349,12 @@ function goToPier(ship: IShip, pier: IPier) {
 function startPierLoading(pier: IPier, ship: IShip) {
 
     if(pier.isEmpty){
-        LoadPier(pier);
-        UnLoadShip(ship, pier);
+        CargoOnPier(pier, "LoadPier");
+        CargoOnShip(ship, pier, "UnLoadShip");
     }
     else {
-        UnLoadPier(pier);
-        LoadShip(ship, pier);
+        CargoOnPier(pier, "UnLoadPier");
+        CargoOnShip(ship, pier, "LoadShip");
     }
 }
 
@@ -372,16 +381,10 @@ function initSea():void{
 
     app.stage.addChild(seaBackground);
 
-    function portBorder(x:number, y:number,app:PIXI.Application):void {
-        const graphics = new PIXI.Graphics();
-        graphics.beginFill(0xf8fc03);
-        graphics.drawRect(x, y, 10, 128);
-        graphics.endFill();
-        app.stage.addChild(graphics);
-    }
-
-    let portBorderTop = portBorder(265, 0,app);
-    let portBorderBottom = portBorder(265, 297,app);
+    let portBorderTop = drawObject(265, 0,10,128, yellowColor);
+    app.stage.addChild(portBorderTop);
+    let portBorderBottom = drawObject(265, 297,10,128,yellowColor);
+    app.stage.addChild(portBorderBottom);
 
 }
 
@@ -396,13 +399,26 @@ function spawnShip(){
     let freeQueue: number;
     let ship: IShip;
 
-    gateQueue.forEach((queue, quePosition) => {
-        if (queue && typeof freeQueue != "number") {
+    gateQueue.forEach((queueMember, quePosition) => {
+        if (queueMember && typeof freeQueue != "number") {
             freeQueue = quePosition;
         }
     });
     if (freeQueue >= 0) {
-        let isEmpty = !Math.round(Math.random());
+        let isEmpty:boolean;
+
+        let emptyShips:number = 0;
+        ships.forEach((ship)=>{
+            if(!ship.toDelete && ship.isEmpty){
+                emptyShips++;
+            }
+        })
+        if(emptyShips===4 )
+            isEmpty=false;
+        else if(emptyShips===0 )
+            isEmpty=true;
+        else
+            isEmpty = !Math.round(Math.random());
 
         if(isEmpty){
             ship = {
@@ -421,7 +437,7 @@ function spawnShip(){
                 queuePos: freeQueue
             }
         }
-        let y = getRndIn();
+        let y = getRnd("IN");
         ship.ship.x = 805;
         ship.ship.y = y;
         ship.cargo.x = 805;
@@ -434,38 +450,35 @@ function spawnShip(){
     }
 }
 
-function goToNextQueue(ship:IShip){
+function goToPos(ship:IShip, queueMove?:boolean){
     let firstQueuePos={ x:280, y:137}
     let duration: number;
-    duration = 1000+1000*ship.queuePos;
-    setTimeout(()=>{
-    new TWEEN.Tween(ship.ship)
-        .to({x: firstQueuePos.x + 100*ship.queuePos, y: firstQueuePos.y}, duration)
-        .onComplete(() => {
-            gateQueue[ship.queuePos] = false;
-        })
-        .start();
+    let delay = 0;
 
-    new TWEEN.Tween(ship.cargo)
-        .to({x: firstQueuePos.x + 100*ship.queuePos, y: firstQueuePos.y}, duration)
-        .start();
-},800)
-}
-
-function goToPos(ship:IShip){
-    let firstQueuePos={ x:280, y:137}
-    let duration: number;
-    duration = 1000+1000*(5-ship.queuePos);
+    if(queueMove){
+        duration = 1000+1000*ship.queuePos;
+        delay = 800;
+    }
+    else{
+        if(ship.queuePos === 4)
+            duration = 3000;
+        else
+            duration = 1000+1000*(5-ship.queuePos);
+    }
 
     new TWEEN.Tween(ship.ship)
         .to({x: firstQueuePos.x + 100*ship.queuePos, y: firstQueuePos.y}, duration)
         .onComplete(() => {
             gateQueue[ship.queuePos] = false;
         })
+        .easing(TWEEN.Easing.Quadratic.Out)
+        .delay(delay)
         .start();
 
     new TWEEN.Tween(ship.cargo)
         .to({x: firstQueuePos.x + 100*ship.queuePos, y: firstQueuePos.y}, duration)
+        .easing(TWEEN.Easing.Quadratic.Out)
+        .delay(delay)
         .start();
 }
 
@@ -476,16 +489,19 @@ function animate() {
     TWEEN.update()
 }
 
-function getRndIn():number {
-    const min:number = 0;
-    const max:number = 137;
-    return Math.floor(Math.random() * (max - min + 1) ) + min;
-}
+function getRnd(direction:string):number {
 
-function getRndOut():number {
-    const min:number = 247;
-    const max:number = 425;
-    return Math.floor(Math.random() * (max - min + 1) ) + min;
+    if(direction === "IN"){
+        const min:number = 0;
+        const max:number = 137;
+        return Math.floor(Math.random() * (max - min + 1) ) + min;
+    }
+    else if(direction === "OUT"){
+        const min:number = 247;
+        const max:number = 425;
+        return Math.floor(Math.random() * (max - min + 1) ) + min;
+    }
+
 }
 
 

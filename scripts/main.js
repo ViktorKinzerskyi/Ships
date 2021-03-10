@@ -14,6 +14,7 @@ var greenColor = 0x3dfc03;
 var outQueue = [];
 var piers = [];
 var ships = [];
+//let gateQueue:boolean[] = new Array(5).fill(true);
 var gateQueue = [
     true,
     true,
@@ -25,6 +26,7 @@ var gateClosed = false;
 var moveFromPort = false;
 var moveToPort = false;
 var spawnInterval = 8000;
+var queueMove = false;
 Start();
 function Start() {
     initSea();
@@ -39,11 +41,7 @@ function initPiers() {
             cargo: drawObject(10, 10 + 105 * i, 40, 90, blueColor),
             pier: drawObject(10, 10 + 105 * i, 40, 90, yellowColor, yellowColor, 10),
             isBusy: false,
-            isEmpty: true,
-            coords: {
-                x: [165, 60],
-                y: [35 + 105 * i, 35 + 105 * i]
-            }
+            isEmpty: true
         };
         app.stage.addChild(piers[i].pier);
         app.stage.addChild(piers[i].cargo);
@@ -89,13 +87,25 @@ function shiftAllShips() {
             gateQueue[ship.queuePos] = true;
             gateQueue[ship.queuePos - 1] = false;
             ship.queuePos -= 1;
-            goToNextQueue(ship);
+            goToPos(ship, true);
         }
     });
 }
-function UnLoadShip(ship, pier) {
+function CargoOnShip(ship, pier, move) {
+    var width;
+    switch (move) {
+        case "LoadShip":
+            width = 90;
+            break;
+        case "UnLoadShip":
+            width = 0;
+            break;
+        default:
+            console.log("No move");
+            break;
+    }
     new TWEEN.Tween(ship.cargo)
-        .to({ width: 0 })
+        .to({ width: width })
         .duration(5000)
         .onComplete(function () {
         if (!moveToPort) {
@@ -107,37 +117,38 @@ function UnLoadShip(ship, pier) {
     })
         .start();
 }
-function LoadShip(ship, pier) {
-    new TWEEN.Tween(ship.cargo)
-        .to({ width: 90 })
-        .duration(5000)
-        .onComplete(function () {
-        if (!moveToPort) {
-            goOut(ship, pier);
-        }
-        else {
-            outQueue.push(ship);
-        }
-    })
-        .start();
-}
-function LoadPier(pier) {
+function CargoOnPier(pier, move) {
+    var width;
+    var nextStep;
+    var x;
+    switch (move) {
+        case "LoadPier":
+            width = 0;
+            x = 10;
+            nextStep = AfterLoading();
+            break;
+        case "UnLoadPier":
+            width = 40;
+            x = 0;
+            nextStep = AfterUnLoading();
+            break;
+        default:
+            console.log("No move");
+            break;
+    }
     new TWEEN.Tween(pier.cargo)
-        .to({ width: 0, x: 10 })
+        .to({ width: width, x: x })
         .duration(5000)
         .onComplete(function () {
+        nextStep;
+    })
+        .start();
+    function AfterLoading() {
         pier.isEmpty = false;
-    })
-        .start();
-}
-function UnLoadPier(pier) {
-    new TWEEN.Tween(pier.cargo)
-        .to({ width: 40, x: 0 })
-        .duration(5000)
-        .onComplete(function () {
+    }
+    function AfterUnLoading() {
         pier.isEmpty = true;
-    })
-        .start();
+    }
 }
 function goOut(ship, pier) {
     moveFromPort = true;
@@ -174,18 +185,18 @@ function goOut(ship, pier) {
     outCoord = null;
 }
 function goFarAway(ship) {
-    var y = getRndOut();
+    var y = getRnd("OUT");
     new TWEEN.Tween(ship.ship)
         .to({ x: 805, y: y })
         .duration(4000)
         .onComplete(function () {
         ships.forEach(function (ship, index) {
-            if (ship.toDelte)
+            if (ship.toDelete)
                 ships.splice(index, 1);
         });
     })
         .start();
-    ship.sheepTween = new TWEEN.Tween(ship.cargo)
+    new TWEEN.Tween(ship.cargo)
         .to({ x: 805, y: y })
         .duration(4000)
         .start();
@@ -193,12 +204,12 @@ function goFarAway(ship) {
 function goToPier(ship, pier) {
     moveToPort = true;
     gateQueue[ship.queuePos] = true;
-    ship.toDelte = true;
+    ship.toDelete = true;
     gateClosed = true;
     pier.isBusy = true;
     var coords;
     var x = ship.ship.getBounds().x;
-    var duration = 1000;
+    var duration = 2000;
     if (ship.queuePos === 0) {
         coords = {
             x: [x],
@@ -234,41 +245,37 @@ function goToPier(ship, pier) {
         duration *= 5;
     }
     if (pier.id === 0) {
-        coords.x.push(165, 165);
-        coords.y.push(192, 111);
+        coords.x.push(165, 165, 165, 60);
+        coords.y.push(192, 111, 35, 35);
         duration += 1000 * 4;
     }
     else if (pier.id === 1) {
-        coords.x.push(165);
-        coords.y.push(192);
+        coords.x.push(165, 165, 60);
+        coords.y.push(192, 140, 140);
         duration += 1000 * 2;
     }
     else if (pier.id === 2) {
-        coords.x.push(165);
-        coords.y.push(192);
+        coords.x.push(165, 165, 60);
+        coords.y.push(192, 245, 245);
         duration += 1000 * 2;
     }
     else if (pier.id === 3) {
-        coords.x.push(165, 165);
-        coords.y.push(192, 273);
+        coords.x.push(165, 165, 165, 60);
+        coords.y.push(192, 273, 350, 350);
         duration += 1000 * 4;
     }
-    pier.coords.x.forEach(function (x) {
-        coords.x.push(x);
-    });
-    pier.coords.y.forEach(function (y) {
-        coords.y.push(y);
-    });
     ship.queuePos = null;
     new TWEEN.Tween(ship.ship)
         .to({ x: coords.x, y: coords.y })
         .duration(duration)
         .interpolation(TWEEN.Interpolation.Linear)
+        .easing(TWEEN.Easing.Quadratic.Out)
         .start();
     new TWEEN.Tween(ship.cargo)
         .to({ x: coords.x, y: coords.y })
         .duration(duration)
         .interpolation(TWEEN.Interpolation.Linear)
+        .easing(TWEEN.Easing.Quadratic.Out)
         .onComplete(function () {
         gateClosed = false;
         startPierLoading(pier, ship);
@@ -283,12 +290,12 @@ function goToPier(ship, pier) {
 }
 function startPierLoading(pier, ship) {
     if (pier.isEmpty) {
-        LoadPier(pier);
-        UnLoadShip(ship, pier);
+        CargoOnPier(pier, "LoadPier");
+        CargoOnShip(ship, pier, "UnLoadShip");
     }
     else {
-        UnLoadPier(pier);
-        LoadShip(ship, pier);
+        CargoOnPier(pier, "UnLoadPier");
+        CargoOnShip(ship, pier, "LoadShip");
     }
 }
 function getRightPier(ship) {
@@ -308,15 +315,10 @@ function initSea() {
     seaBackground.width = 800;
     seaBackground.height = 425;
     app.stage.addChild(seaBackground);
-    function portBorder(x, y, app) {
-        var graphics = new PIXI.Graphics();
-        graphics.beginFill(0xf8fc03);
-        graphics.drawRect(x, y, 10, 128);
-        graphics.endFill();
-        app.stage.addChild(graphics);
-    }
-    var portBorderTop = portBorder(265, 0, app);
-    var portBorderBottom = portBorder(265, 297, app);
+    var portBorderTop = drawObject(265, 0, 10, 128, yellowColor);
+    app.stage.addChild(portBorderTop);
+    var portBorderBottom = drawObject(265, 297, 10, 128, yellowColor);
+    app.stage.addChild(portBorderBottom);
 }
 function startAction() {
     spawnShip();
@@ -327,13 +329,25 @@ function startAction() {
 function spawnShip() {
     var freeQueue;
     var ship;
-    gateQueue.forEach(function (queue, quePosition) {
-        if (queue && typeof freeQueue != "number") {
+    gateQueue.forEach(function (queueMember, quePosition) {
+        if (queueMember && typeof freeQueue != "number") {
             freeQueue = quePosition;
         }
     });
     if (freeQueue >= 0) {
-        var isEmpty = !Math.round(Math.random());
+        var isEmpty = void 0;
+        var emptyShips_1 = 0;
+        ships.forEach(function (ship) {
+            if (!ship.toDelete && ship.isEmpty) {
+                emptyShips_1++;
+            }
+        });
+        if (emptyShips_1 === 4)
+            isEmpty = false;
+        else if (emptyShips_1 === 0)
+            isEmpty = true;
+        else
+            isEmpty = !Math.round(Math.random());
         if (isEmpty) {
             ship = {
                 isEmpty: isEmpty,
@@ -351,7 +365,7 @@ function spawnShip() {
                 queuePos: freeQueue
             };
         }
-        var y = getRndIn();
+        var y = getRnd("IN");
         ship.ship.x = 805;
         ship.ship.y = y;
         ship.cargo.x = 805;
@@ -362,34 +376,32 @@ function spawnShip() {
         goToPos(ship);
     }
 }
-function goToNextQueue(ship) {
+function goToPos(ship, queueMove) {
     var firstQueuePos = { x: 280, y: 137 };
     var duration;
-    duration = 1000 + 1000 * ship.queuePos;
-    setTimeout(function () {
-        new TWEEN.Tween(ship.ship)
-            .to({ x: firstQueuePos.x + 100 * ship.queuePos, y: firstQueuePos.y }, duration)
-            .onComplete(function () {
-            gateQueue[ship.queuePos] = false;
-        })
-            .start();
-        new TWEEN.Tween(ship.cargo)
-            .to({ x: firstQueuePos.x + 100 * ship.queuePos, y: firstQueuePos.y }, duration)
-            .start();
-    }, 800);
-}
-function goToPos(ship) {
-    var firstQueuePos = { x: 280, y: 137 };
-    var duration;
-    duration = 1000 + 1000 * (5 - ship.queuePos);
+    var delay = 0;
+    if (queueMove) {
+        duration = 1000 + 1000 * ship.queuePos;
+        delay = 800;
+    }
+    else {
+        if (ship.queuePos === 4)
+            duration = 3000;
+        else
+            duration = 1000 + 1000 * (5 - ship.queuePos);
+    }
     new TWEEN.Tween(ship.ship)
         .to({ x: firstQueuePos.x + 100 * ship.queuePos, y: firstQueuePos.y }, duration)
         .onComplete(function () {
         gateQueue[ship.queuePos] = false;
     })
+        .easing(TWEEN.Easing.Quadratic.Out)
+        .delay(delay)
         .start();
     new TWEEN.Tween(ship.cargo)
         .to({ x: firstQueuePos.x + 100 * ship.queuePos, y: firstQueuePos.y }, duration)
+        .easing(TWEEN.Easing.Quadratic.Out)
+        .delay(delay)
         .start();
 }
 animate();
@@ -397,13 +409,15 @@ function animate() {
     requestAnimationFrame(animate);
     TWEEN.update();
 }
-function getRndIn() {
-    var min = 0;
-    var max = 137;
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-function getRndOut() {
-    var min = 247;
-    var max = 425;
-    return Math.floor(Math.random() * (max - min + 1)) + min;
+function getRnd(direction) {
+    if (direction === "IN") {
+        var min = 0;
+        var max = 137;
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+    else if (direction === "OUT") {
+        var min = 247;
+        var max = 425;
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
 }
